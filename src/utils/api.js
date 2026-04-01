@@ -1,4 +1,4 @@
-const OPENWEATHER_API_KEY = process.env.REACT_APP_OPENWEATHER_API_KEY || 'db07efb251b14c5574b20d0f3c3a23e6';
+const OPENWEATHER_API_KEY = process.env.REACT_APP_OPENWEATHER_API_KEY;
 
 export async function fetchWeather(city) {
   try {
