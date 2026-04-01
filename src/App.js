@@ -1,23 +1,164 @@
-import logo from './logo.svg';
+import React, { useEffect, useState } from 'react';
+import SearchBar from './components/SearchBar';
+import CurrentWeather from './components/CurrentWeather';
+import WeatherChart from './components/WeatherChart';
+import WeatherInsights from './components/WeatherInsights';
+import { fetchWeather, processForecast } from './utils/api';
 import './App.css';
 
+const defaultForecast = [
+  { day: 'Mon', temp: 23.2 },
+  { day: 'Tue', temp: 27.3 },
+  { day: 'Wed', temp: 23.1 },
+  { day: 'Thu', temp: 25.2 },
+  { day: 'Thu', temp: 22.7 },
+  { day: 'Fri', temp: 25.5 },
+  { day: 'Sat', temp: 22.8 },
+  { day: 'Sat', temp: 24.9 },
+  { day: 'Sun', temp: 24.6 },
+  { day: 'Sun', temp: 26.6 },
+];
+
+const fallbackWeather = {
+  city: 'London',
+  currentTemperature: 18,
+  condition: 'Cloudy',
+};
+
+const fallbackInsight = 'Best day to go out: Friday (18°C)';
+
+const conditionMap = {
+  Clouds: 'Cloudy',
+  Rain: 'Rainy',
+  Drizzle: 'Drizzle',
+  Clear: 'Clear',
+  Snow: 'Snowy',
+  Thunderstorm: 'Stormy',
+  Mist: 'Mist',
+  Fog: 'Fog',
+  Haze: 'Haze',
+};
+
+function formatDay(dateString) {
+  return new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(new Date(`${dateString}T00:00:00Z`));
+}
+
+function getCondition(item) {
+  const weatherMain = item?.weather?.[0]?.main;
+  const weatherDescription = item?.weather?.[0]?.description;
+
+  if (weatherMain && conditionMap[weatherMain]) {
+    return conditionMap[weatherMain];
+  }
+
+  if (weatherDescription) {
+    return weatherDescription.charAt(0).toUpperCase() + weatherDescription.slice(1);
+  }
+
+  return fallbackWeather.condition;
+}
+
+function buildInsight(dailyForecast, forecastList) {
+  if (dailyForecast.length === 0) {
+    return fallbackInsight;
+  }
+
+  const groupedByDate = forecastList.reduce((accumulator, item) => {
+    const date = item.dt_txt.split(' ')[0];
+    if (!accumulator[date]) {
+      accumulator[date] = [];
+    }
+    accumulator[date].push(item);
+    return accumulator;
+  }, {});
+
+  const rainyDay = dailyForecast.find((entry) => {
+    const items = groupedByDate[entry.date] || [];
+    return items.some((item) => (item.pop ?? 0) > 0.6 || item.weather?.some((weather) => /rain/i.test(weather.main)));
+  });
+
+  if (rainyDay) {
+    return `Rain expected on ${rainyDay.day}`;
+  }
+
+  const hotDay = dailyForecast.find((entry) => entry.temp > 35);
+  if (hotDay) {
+    return `Very hot day expected on ${hotDay.day} (${Math.round(hotDay.temp)}°C)`;
+  }
+
+  const coldDay = dailyForecast.find((entry) => entry.temp < 5);
+  if (coldDay) {
+    return `Cold warning on ${coldDay.day} (${Math.round(coldDay.temp)}°C)`;
+  }
+
+  const bestDay = dailyForecast.reduce((lowest, entry) => (entry.temp < lowest.temp ? entry : lowest), dailyForecast[0]);
+  return `Best day to go out: ${bestDay.day} (${Math.round(bestDay.temp)}°C)`;
+}
+
 function App() {
+  const [city, setCity] = useState('London');
+  const [forecast, setForecast] = useState(defaultForecast);
+  const [weather, setWeather] = useState(fallbackWeather);
+  const [insight, setInsight] = useState(fallbackInsight);
+
+  const loadWeather = async (searchCity) => {
+    const nextCity = searchCity.trim() || 'London';
+    setCity(nextCity);
+
+    try {
+      const data = await fetchWeather(nextCity);
+      const dailyForecast = processForecast(data).slice(0, 7).map((entry) => ({
+        day: entry.day || formatDay(entry.date),
+        date: entry.date,
+        temp: Number(entry.temp.toFixed(1)),
+      }));
+
+      const currentWeather = data.list[0];
+
+      setWeather({
+        city: data.city?.name || nextCity,
+        currentTemperature: Math.round(currentWeather.main.temp),
+        condition: getCondition(currentWeather),
+      });
+      setForecast(dailyForecast.length > 0 ? dailyForecast : defaultForecast);
+      setInsight(buildInsight(dailyForecast.length > 0 ? dailyForecast : defaultForecast, data.list));
+    } catch (error) {
+      console.error('Unable to load weather data:', error);
+      setWeather({
+        city: nextCity,
+        currentTemperature: fallbackWeather.currentTemperature,
+        condition: fallbackWeather.condition,
+      });
+      setForecast(defaultForecast);
+      setInsight(fallbackInsight);
+    }
+  };
+
+  useEffect(() => {
+    loadWeather(city);
+  }, []);
+
+  const handleSearch = (searchCity) => {
+    loadWeather(searchCity);
+  };
+
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
+    <div className="app-shell">
+      <div className="browser-frame">
+        <div className="browser-topbar" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+          <div className="browser-address" />
+        </div>
+
+        <main className="app-main">
+          <SearchBar initialCity={city} onSearch={handleSearch} />
+          <CurrentWeather city={weather.city} currentTemperature={weather.currentTemperature} condition={weather.condition} />
+          <WeatherChart forecastData={forecast} />
+          <WeatherInsights insightText={insight} />
+        </main>
+      </div>
     </div>
   );
 }
