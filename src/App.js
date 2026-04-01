@@ -140,7 +140,7 @@ function App() {
   };
 
   useEffect(() => {
-    loadWeather(city);
+    loadWeather('London');
   }, []);
 
   const handleSearch = (searchCity) => {
