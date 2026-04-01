@@ -25,7 +25,11 @@ const fallbackWeather = {
   condition: 'Cloudy',
 };
 
-const fallbackInsight = 'Best day to go out: Friday (18°C)';
+const fallbackInsights = [
+  'Best day to go out: Friday (18°C)',
+  'Rain expected on Thursday',
+  'Very hot day expected on Saturday (34°C)',
+];
 
 const conditionMap = {
   Clouds: 'Cloudy',
@@ -58,9 +62,9 @@ function getCondition(item) {
   return fallbackWeather.condition;
 }
 
-function buildInsight(dailyForecast, forecastList) {
+function buildInsights(dailyForecast, forecastList) {
   if (dailyForecast.length === 0) {
-    return fallbackInsight;
+    return fallbackInsights;
   }
 
   const groupedByDate = forecastList.reduce((accumulator, item) => {
@@ -72,34 +76,35 @@ function buildInsight(dailyForecast, forecastList) {
     return accumulator;
   }, {});
 
+  const bestDay = dailyForecast.reduce((lowest, entry) => (entry.temp < lowest.temp ? entry : lowest), dailyForecast[0]);
+
   const rainyDay = dailyForecast.find((entry) => {
     const items = groupedByDate[entry.date] || [];
     return items.some((item) => (item.pop ?? 0) > 0.6 || item.weather?.some((weather) => /rain/i.test(weather.main)));
   });
 
-  if (rainyDay) {
-    return `Rain expected on ${rainyDay.day}`;
-  }
+  const hottestDay = dailyForecast.reduce((highest, entry) => (entry.temp > highest.temp ? entry : highest), dailyForecast[0]);
+  const coldestDay = dailyForecast.reduce((lowest, entry) => (entry.temp < lowest.temp ? entry : lowest), dailyForecast[0]);
 
-  const hotDay = dailyForecast.find((entry) => entry.temp > 35);
-  if (hotDay) {
-    return `Very hot day expected on ${hotDay.day} (${Math.round(hotDay.temp)}°C)`;
-  }
+  const temperatureInsight =
+    hottestDay.temp > 35
+      ? `Very hot day expected on ${hottestDay.day} (${Math.round(hottestDay.temp)}°C)`
+      : coldestDay.temp < 5
+        ? `Cold warning on ${coldestDay.day} (${Math.round(coldestDay.temp)}°C)`
+        : `Warmest day expected on ${hottestDay.day} (${Math.round(hottestDay.temp)}°C)`;
 
-  const coldDay = dailyForecast.find((entry) => entry.temp < 5);
-  if (coldDay) {
-    return `Cold warning on ${coldDay.day} (${Math.round(coldDay.temp)}°C)`;
-  }
-
-  const bestDay = dailyForecast.reduce((lowest, entry) => (entry.temp < lowest.temp ? entry : lowest), dailyForecast[0]);
-  return `Best day to go out: ${bestDay.day} (${Math.round(bestDay.temp)}°C)`;
+  return [
+    `Best day to go out: ${bestDay.day} (${Math.round(bestDay.temp)}°C)`,
+    rainyDay ? `Rain expected on ${rainyDay.day}` : 'No rain expected in the forecast',
+    temperatureInsight,
+  ];
 }
 
 function App() {
   const [city, setCity] = useState('London');
   const [forecast, setForecast] = useState(defaultForecast);
   const [weather, setWeather] = useState(fallbackWeather);
-  const [insight, setInsight] = useState(fallbackInsight);
+  const [insights, setInsights] = useState(fallbackInsights);
 
   const loadWeather = async (searchCity) => {
     const nextCity = searchCity.trim() || 'London';
@@ -121,7 +126,7 @@ function App() {
         condition: getCondition(currentWeather),
       });
       setForecast(dailyForecast.length > 0 ? dailyForecast : defaultForecast);
-      setInsight(buildInsight(dailyForecast.length > 0 ? dailyForecast : defaultForecast, data.list));
+      setInsights(buildInsights(dailyForecast.length > 0 ? dailyForecast : defaultForecast, data.list));
     } catch (error) {
       console.error('Unable to load weather data:', error);
       setWeather({
@@ -130,7 +135,7 @@ function App() {
         condition: fallbackWeather.condition,
       });
       setForecast(defaultForecast);
-      setInsight(fallbackInsight);
+      setInsights(fallbackInsights);
     }
   };
 
@@ -156,7 +161,7 @@ function App() {
           <SearchBar initialCity={city} onSearch={handleSearch} />
           <CurrentWeather city={weather.city} currentTemperature={weather.currentTemperature} condition={weather.condition} />
           <WeatherChart forecastData={forecast} />
-          <WeatherInsights insightText={insight} />
+          <WeatherInsights insights={insights} />
         </main>
       </div>
     </div>
